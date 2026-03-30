@@ -1,0 +1,54 @@
+pga_stats.combined_data
+The combined data table contains each golfer summarized at one line per golfer. 
+The data in the table is updated every 1-2 weeks. The player column contains the names of each golfer. 
+The columns labeled "SG_last_1" through "SG_last_89" contain the moving average of the shots gained stat. 
+DG_rank is the most recent rank from a website called "data golf". Data golf analyzes the performance of golfers and ranks them based on performance. 
+Owgr_rank is the world ranking of golfers from the Official world golf ranking organization. 
+The refresh_date is the date the pipeline that produces this table has been refreshed. 
+The columns labeled "SG_last_1_percentile" through "SG_last_89_percentile" is the percentile rank of each of the "SG_last_x" columns. 
+Total tournaments is the count of tournaments a golfer has participated in since ~ 2022. 
+tournaments_last_year is the count of golf events that the golfer participated in the last calendar year. 
+Cut_percentage_last_year is the percentage of time a golfer made the cut. Each golf tournament has 4 rounds. 
+After the second round of a tournament, the top 50% of golfers by score make the cut while the bottom 50% of golfers do not make the cut. 
+So the Cut_percentage_last_year column is the percentage of time a golfer "made the cut", in other words they where in the top 50% of golfers at the end of round 2 and were able to play the remaining rounds of the event (rounds 3 and 4). 
+Last_3_avg_position is the average finish position of the golfer over the past 3 results. 
+The last_5_avg_position and last_10_avg_position follow the same logic as the last_3_avg_position column. 
+The top_5_count	top_10_count top_20_count columns are a count of how many times a golfer finished in the top 5, 10 and 20 of golfers for an event in the past year.
+The top_5_percentage_last_year	top_10_percentage_last_year	top_20_percentage_last_year columns are the % of times each golfer finished in the top 5,10,20 in the past year. 
+The columns: top_5_last_5	top_10_last_5	top_20_last_5 is a count of the amount of times a golfer finished in the top 5,10,20 over the last 5 tournaments. 
+The columns: top_5_last_10	top_10_last_10	top_20_last_10 is a count of the amount of times a golfer finished in the top 5,10,20 over the last 10 tournaments. 
+The following columns are the percentile ranks for previous columns: cut_percentage_last_year_percentile	top_5_percentage_last_year_percentile	top_10_percentage_last_year_percentile	top_20_percentage_last_year_percentile	top_5_last_5_percentile	top_10_last_5_percentile	top_20_last_5_percentile	top_5_last_10_percentile	top_10_last_10_percentile	top_20_last_10_percentile
+The composite_score is a metric that is created by assigning weights to many of the metrics in the table and getting a composite score for each golfer. The higher the value, the higher performing the golfer. 
+The composite_percentile_rank column is the percentile rank of the composite_score column / metric. 
+
+
+pga_stats.sg_data
+This table contains golfer stats for stokes gained. After each tournament, the strokes gained are calculated 
+for players that make the cut and finish the round. Each row contains the stroke gained stats for a golfer for the tournament. 
+The "player" column contains the name of the golfer for the row. 
+The avg column is the average value of the total strokes gained metric. The avg is calculated  by dividing the 
+total_sg_t by measured rounds. 
+The total_sg_t column is the total strokes gained metric. 
+The total_sg_t2g is the strokes gained tee to green metric. This is the amount of strokes better this player is compared to other players in the tournament. 
+The total_sg_p is the strokes gained putting metric. 
+The year column is the year of the event / tournament. 
+The tournament column is the name of the tournament the golfer took place in. 
+Week_of_season is the week the tournament happened. 
+Course is the course the tournament took place on. 
+Sigature_event is a flag if the tournament was a Sigature_event. If the field = 'Y' then it was a sigature_event. Signature events have bigger cash prize amounts to the winner and the field is more competitve. 
+Major_event column is a flag to indicate if the tournament was major tournament. There are 4 major tournaments a year, the masters, the US open, the PGA Championship and the Open Championship. 
+
+
+pga_stats.leaderboard_data 
+The column "pos" stands for position. This indicates the position the golfer finished for the tournament. 1 is the best position. A player can finish tied for positions, T3 means the golfer tied for third. 
+A golfer can also have a record saying "cut" in the pos column, meaning the golfer was cut during the tournament. The pos column can also say w/d with means withdrawl. 
+The player column is the name of the golfer. 
+r1, r2, r3, r4 indicates the score of the golfer from round 1, round 2, round 3 and round 4. The scores in the r1,r2,r3,r4 is the score to par. A value of -5 in r1 indicates the golfer was 5 shots under par for round 1. 
+The "to_par" column is the total and final score of the golfer for the tournament. 
+The Official_money column is the amount of money the golfer won for the tournament. 
+The year column indicates the year the tournament took place. 
+The tournament column is the name of the tournament the golfer took place in. 
+Week_of_season is the week the tournament happened. 
+Course is the course the tournament took place on. 
+Sigature_event is a flag if the tournament was a Sigature_event. If the field = 'Y' then it was a sigature_event. Signature events have bigger cash prize amounts to the winner and the field is more competitve. 
+Major_event column is a flag to indicate if the tournament was major tournament. There are 4 major tournaments a year, the masters, the US open, the PGA Championship and the Open Championship. 
