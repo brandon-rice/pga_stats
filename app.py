@@ -214,11 +214,11 @@ def check_db_connection():
     try:
         import psycopg2
         conn = psycopg2.connect(
-            host=os.getenv("DB_HOST", "localhost"),
-            port=int(os.getenv("DB_PORT", 5432)),
-            database=os.getenv("DB_NAME"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
+            host=os.getenv("NEON_HOST"),
+            port=int(os.getenv("NEON_PORT", 5432)),
+            database=os.getenv("NEON_DB"),
+            user=os.getenv("NEON_USER"),
+            password=os.getenv("NEON_PASSWORD"),
         )
         conn.close()
         return True

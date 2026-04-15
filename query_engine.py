@@ -15,14 +15,15 @@ load_dotenv()
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-db_config = {
-    "host":     os.getenv("DB_HOST", "localhost"),
-    "port":     int(os.getenv("DB_PORT", 5432)),
-    "database": os.getenv("DB_NAME"),
-    "user":     os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-}
 
+db_config = {
+    "host":     os.getenv("NEON_HOST"),
+    "port":     int(os.getenv("NEON_PORT", 5432)),
+    "database": os.getenv("NEON_DB"),
+    "user":     os.getenv("NEON_USER"),
+    "password": os.getenv("NEON_PASSWORD"),
+    "sslmode":  "require"
+}
 
 # ─── Step 1: Natural Language → SQL ─────────────────────────────────────────
 
