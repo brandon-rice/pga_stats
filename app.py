@@ -232,7 +232,7 @@ with st.sidebar:
     # Connection status
     st.markdown("**Database**")
     if check_db_connection():
-        st.success(f"Connected to `{os.getenv('DB_NAME')}`")
+        st.success(f"Connected to `{os.getenv('NEON_DB')}`")
     else:
         st.error("Connection failed — check your .env file")
  
