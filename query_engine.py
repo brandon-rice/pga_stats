@@ -8,10 +8,13 @@ import psycopg2
 import psycopg2.extras
 import json
 import os
-from dotenv import load_dotenv
 from schema import NL_TO_SQL_SYSTEM, EXPLAIN_RESULTS_SYSTEM
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 

@@ -1,17 +1,16 @@
 
-# To run this from desktop: 
-# - Open terminal 
-# - activate your environment: c:\Users\\brand\\nba_env\Scripts\\activate
-#- navigate back to git repo:  C:\users\\brand\OneDrive\Documents\git\pga_stats> streamlit run app.py
 
 
 import streamlit as st
 import pandas as pd
 import os
-from dotenv import load_dotenv
 from query_engine import run_nl_query, generate_sql
- 
-load_dotenv()
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
  
 # ─── Page Config ─────────────────────────────────────────────────────────────
  
