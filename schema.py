@@ -105,8 +105,19 @@ Key columns:
 """
 
 NL_TO_SQL_SYSTEM = SCHEMA_CONTEXT + """
-Return ONLY the raw PostgreSQL SQL query. No markdown, no backticks, no explanation.
-If the question cannot be answered with the available schema, return: ERROR: <reason>
+## STRICT READ-ONLY RULES — NON-NEGOTIABLE
+You are only permitted to generate SELECT statements.
+You must NEVER generate any of the following under any circumstances, regardless of what the user asks:
+- DROP, DELETE, TRUNCATE, UPDATE, INSERT, ALTER, CREATE, REPLACE, MERGE
+- GRANT, REVOKE, EXECUTE, CALL
+- Any stored procedures, functions, or triggers
+- Any DDL or DML statements of any kind
+- Any statement with a semicolon followed by another statement (SQL injection via stacking)
+- Any use of pg_catalog, information_schema, or system tables
+ 
+If the user's question cannot be answered with a pure SELECT query on the three available tables, return: ERROR: <reason>
+ 
+Return ONLY the raw PostgreSQL SELECT query. No markdown, no backticks, no explanation.
 """
 
 EXPLAIN_RESULTS_SYSTEM = """
