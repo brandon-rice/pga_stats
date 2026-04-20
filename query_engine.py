@@ -28,7 +28,42 @@ db_config = {
     "sslmode":  "require"
 }
 
-# ─── Step 1: Natural Language → SQL ─────────────────────────────────────────
+# ─── SQL Safety Validator ─────────────────────────────────────────────────────
+
+# Keywords that must never appear in a safe read-only query
+FORBIDDEN_KEYWORDS = [
+    r"\bDROP\b", r"\bDELETE\b", r"\bTRUNCATE\b", r"\bUPDATE\b",
+    r"\bINSERT\b", r"\bALTER\b", r"\bCREATE\b", r"\bREPLACE\b",
+    r"\bMERGE\b", r"\bGRANT\b", r"\bREVOKE\b", r"\bEXECUTE\b",
+    r"\bCALL\b",  r"\bEXEC\b",  r"\bpg_catalog\b", r"\bpg_sleep\b",
+    r"\bpg_read_file\b", r"\blo_import\b", r"\blo_export\b",
+    r"\bcopy\b",  r"\b--\b",    r"/\*",
+]
+ 
+def validate_sql(sql: str) -> tuple[bool, str]:
+    """
+    Validate that generated SQL is safe to execute.
+    Returns (is_safe, reason) tuple.
+    """
+    sql_upper = sql.upper().strip()
+ 
+    # Must start with SELECT
+    if not sql_upper.startswith("SELECT"):
+        return False, "Only SELECT queries are permitted."
+ 
+    # Check for stacked statements (semicolon followed by anything)
+    if re.search(r";\s*\S", sql):
+        return False, "Stacked SQL statements are not permitted."
+ 
+    # Check for forbidden keywords
+    for pattern in FORBIDDEN_KEYWORDS:
+        if re.search(pattern, sql, re.IGNORECASE):
+            keyword = pattern.replace(r"\b", "").replace("\\", "")
+            return False, f"Forbidden keyword detected: {keyword}"
+ 
+    return True, "OK" 
+
+# ─── Core Func ─────────────────────────────────────────
 
 def generate_sql(question: str) -> str:
     """Convert a natural language question to a PostgreSQL query."""
@@ -43,7 +78,6 @@ def generate_sql(question: str) -> str:
     return response.content[0].text.strip()
 
 
-# ─── Step 2: Execute SQL ─────────────────────────────────────────────────────
 
 def execute_query(sql: str) -> tuple:
     """Run a SQL query and return rows as list of dicts plus column names."""
@@ -58,7 +92,6 @@ def execute_query(sql: str) -> tuple:
         conn.close()
 
 
-# ─── Step 3: Results → Plain English Explanation ─────────────────────────────
 
 def explain_results(question: str, sql: str, rows: list[dict], columns: list[str]) -> str:
     """Generate a plain English explanation of query results."""
@@ -122,7 +155,13 @@ def run_nl_query(question: str) -> dict:
         result["error"] = f"Failed to generate SQL: {str(e)}"
         return result
 
-    # Step 2: Execute query
+    # Step 2: Validate SQL before execution
+    is_safe, reason = validate_sql(sql)
+    if not is_safe:
+        result["error"] = f"Query blocked by safety validator: {reason}"
+        return result
+
+    # Step 3: Execute query
     try:
         rows, columns = execute_query(sql)
         result["rows"] = rows
@@ -131,7 +170,7 @@ def run_nl_query(question: str) -> dict:
         result["error"] = f"Query execution failed: {str(e)}\n\nGenerated SQL:\n{sql}"
         return result
 
-    # Step 3: Explain results
+    # Step 4: Explain results
     try:
         if rows:
             explanation = explain_results(question, sql, rows, columns)
@@ -159,5 +198,123 @@ if __name__ == "__main__":
     for q in test_questions:
         print(f"Q: {q}")
         sql = generate_sql(q)
-        print(f"SQL: {sql}\n")
+        is_safe, reason = validate_sql(sql)
+        print(f"SQL: {sql}")
+        print(f"Safe: {is_safe} — {reason}\n")
         print("-" * 60)
+
+
+# ─── Step 1: Natural Language → SQL ─────────────────────────────────────────
+ 
+def generate_sql(question: str) -> str:
+    """Convert a natural language question to a PostgreSQL query."""
+    response = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=1000,
+        system=NL_TO_SQL_SYSTEM,
+        messages=[
+            {"role": "user", "content": question}
+        ]
+    )
+    return response.content[0].text.strip()
+ 
+ 
+# ─── Step 2: Execute SQL ─────────────────────────────────────────────────────
+ 
+def execute_query(sql: str) -> tuple:
+    """Run a SQL query and return rows as list of dicts plus column names."""
+    conn = psycopg2.connect(**db_config)
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+            columns = [desc[0] for desc in cur.description]
+            return [dict(row) for row in rows], columns
+    finally:
+        conn.close()
+ 
+ 
+# ─── Step 3: Results → Plain English Explanation ─────────────────────────────
+ 
+def explain_results(question: str, sql: str, rows: list[dict], columns: list[str]) -> str:
+    """Generate a plain English explanation of query results."""
+    # Limit to first 20 rows for context window efficiency
+    sample = rows[:20]
+    results_text = json.dumps(sample, indent=2, default=str)
+ 
+    prompt = f"""
+Original question: {question}
+ 
+SQL query used: {sql}
+ 
+Results ({len(rows)} total rows):
+{results_text}
+ 
+Columns returned: {', '.join(columns)}
+"""
+ 
+    response = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=500,
+        system=EXPLAIN_RESULTS_SYSTEM,
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.content[0].text.strip()
+ 
+ 
+# ─── Main Query Pipeline ─────────────────────────────────────────────────────
+ 
+def run_nl_query(question: str) -> dict:
+    """
+    Full pipeline: NL question → SQL → execute → explain.
+    
+    Returns dict with:
+    - question: original question
+    - sql: generated SQL
+    - rows: query results
+    - columns: column names
+    - explanation: plain English summary
+    - error: error message if something failed
+    """
+    result = {
+        "question": question,
+        "sql": None,
+        "rows": [],
+        "columns": [],
+        "explanation": None,
+        "error": None
+    }
+ 
+    # Step 1: Generate SQL
+    try:
+        sql = generate_sql(question)
+        if sql.startswith("ERROR:"):
+            result["error"] = sql
+            return result
+        result["sql"] = sql
+    except Exception as e:
+        result["error"] = f"Failed to generate SQL: {str(e)}"
+        return result
+ 
+    # Step 2: Execute query
+    try:
+        rows, columns = execute_query(sql)
+        result["rows"] = rows
+        result["columns"] = columns
+    except Exception as e:
+        result["error"] = f"Query execution failed: {str(e)}\n\nGenerated SQL:\n{sql}"
+        return result
+ 
+    # Step 3: Explain results
+    try:
+        if rows:
+            explanation = explain_results(question, sql, rows, columns)
+        else:
+            explanation = "No results found for this query. The filters may be too narrow or the data may not exist."
+        result["explanation"] = explanation
+    except Exception as e:
+        result["explanation"] = f"Results retrieved but explanation failed: {str(e)}"
+ 
+    return result
