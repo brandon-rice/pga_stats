@@ -94,8 +94,12 @@ df['player_name'] = df['player_name'].apply(
 # ...existing code...
 
 
-# table the data is being inserted into 
+# table the data is being inserted into
 table_name = 'datagolf_ranks'
+
+cur.execute(f"TRUNCATE TABLE {schema}.{table_name} RESTART IDENTITY")
+conn.commit()
+print("Table truncated successfully!")
 
 for _, row in df.iterrows():
     columns = ', '.join(f'"{col}"' for col in df.columns)  # quoting for safety
