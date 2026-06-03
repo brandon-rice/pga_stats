@@ -11,6 +11,9 @@ import sys
 from datetime import datetime
 
 
+# Load environment variables before anything that reads from them
+load_dotenv()
+
 class _Tee:
     def __init__(self, *files):
         self._files = files
@@ -27,9 +30,6 @@ _log_path = os.path.join(_log_dir, f"pga_golf_ranks_{datetime.now().strftime('%Y
 _log_file = open(_log_path, 'w', encoding='utf-8')
 sys.stdout = _Tee(sys.__stdout__, _log_file)
 print(f"Logging output to: {_log_path}")
-
-# Load environment variables from .env file
-load_dotenv()
 # Base folder path
 PLAYER_LIST_CSV_PATH = os.getenv("PLAYER_LIST_CSV_PATH")
 
