@@ -3,11 +3,30 @@
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import execute_values
-import pandas as pd 
+import pandas as pd
 import numpy as np
 import os
 import re
+import sys
+from datetime import datetime
 
+
+class _Tee:
+    def __init__(self, *files):
+        self._files = files
+    def write(self, data):
+        for f in self._files:
+            f.write(data)
+    def flush(self):
+        for f in self._files:
+            f.flush()
+
+_log_dir = os.getenv('LOG_DIR', os.path.dirname(os.path.abspath(__file__)))
+os.makedirs(_log_dir, exist_ok=True)
+_log_path = os.path.join(_log_dir, f"pga_golf_ranks_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+_log_file = open(_log_path, 'w', encoding='utf-8')
+sys.stdout = _Tee(sys.__stdout__, _log_file)
+print(f"Logging output to: {_log_path}")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -928,3 +947,7 @@ finally:
 
 
 results = analyze_tournament(df, "The Genesis Invitational")
+
+sys.stdout = sys.__stdout__
+_log_file.close()
+print(f"Log saved to: {_log_path}")
