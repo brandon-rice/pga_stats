@@ -130,7 +130,7 @@ for _, row in df.iterrows():
     insert_sql = f"INSERT INTO {schema}.{table_name} ({columns}) VALUES ({placeholders})"
     
     # DEBUG: print the row and data types
-    print("Row data:", row.to_dict())
+    # print("Row data:", row.to_dict())
 
     try:
         cur.execute(insert_sql, tuple(row))

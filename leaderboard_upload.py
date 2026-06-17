@@ -157,7 +157,7 @@ columns_to_clean = ['Week_Of_Season', 'year','r1','r2','r3','r4'
 for col in columns_to_clean:
     df[col] = df[col].apply(lambda x: None if pd.isna(x) else int(x))
 
-    print(df.head())
+    #print(df.head())
 
 columns_to_clean = ['FedExCup_Pts']
 
