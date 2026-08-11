@@ -348,7 +348,7 @@ filtered_df['top_10_last_10_percentile'] = filtered_df['top_10_last_10'].rank(pc
 filtered_df['top_20_last_10_percentile'] = filtered_df['top_20_last_10'].rank(pct=True,ascending=True)
 
 merged_dataset = pd.merge(joined_df, filtered_df, on='player', how='left')
-merged_dataset = merged_dataset[merged_dataset['tournaments_last_year'] > 4]
+merged_dataset = merged_dataset[merged_dataset['tournaments_last_year'] > 3]
 
 metric_col_1 = 'SG_last_1_percentile'
 metric_col_2 = 'SG_last_2_percentile'
@@ -549,8 +549,11 @@ total_composite = 0
 
 for tier_num in sorted(playerlist_metrics['Tier'].unique()):
     tier_players = playerlist_metrics[playerlist_metrics['Tier'] == tier_num].sort_values('weighted_composite', ascending=False)
+    if tier_players.empty:
+        print(f"Tier {tier_num}: (no players)")
+        continue
     best_player = tier_players.iloc[0]
-    
+
     optimal_picks.append({
         'Tier': tier_num,
         'player': best_player['player'],
@@ -659,9 +662,13 @@ def golfer_profile(
     print(f'  🏌️  GOLFER PROFILE: {canonical_name.upper()}')
     print('═' * 65)
 
-    # Want to add more stats here 
-    print('datagolf ranking: ' + str(merged_dataset.loc[merged_dataset['player'] == canonical_name]['dg_rank'].iloc[0]))
-    print(merged_dataset.loc[merged_dataset['player'] == canonical_name][['dg_rank']].to_string(index=False))
+    # Want to add more stats here
+    _mrow = merged_dataset.loc[merged_dataset['player'] == canonical_name]
+    if not _mrow.empty:
+        print('datagolf ranking: ' + str(_mrow['dg_rank'].iloc[0]))
+        print(_mrow[['dg_rank']].to_string(index=False))
+    else:
+        print('datagolf ranking: N/A (not in merged_dataset — likely ≤3 tournaments last year)')
 
 
     # ── Section 1: Recent Finishes ────────────────────────────────────────
