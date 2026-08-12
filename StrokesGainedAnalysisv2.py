@@ -47,6 +47,8 @@ import psycopg2
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 
+from player_names import normalize_player_name
+
 # ── Configuration ──────────────────────────────────────────────────────────
 
 # How to handle missed cuts when converting finish position to a number.
@@ -74,7 +76,7 @@ WEIGHTS = {
     'SG_last_21_percentile'                  : 0.5,
     'SG_last_34_percentile'                  : 0.25,
     'SG_last_55_percentile'                  : 0.25,
-    'dg_index_percentile'                    : 1.5,
+    'dg_index_percentile'                    : 0.8,
     'owgr_rank_percentile'                   : 0.5,
     'last_3_avg_position_percentile'         : 0.5,
     'last_5_avg_position_percentile'         : 0.75,
@@ -217,8 +219,17 @@ def fetch_datagolf_ranks(conn):
 def build_sg_percentiles(sg_df, ranks_df):
     """Latest SG row per player joined to DG ranks, with percentile ranks added."""
     latest = sg_df.groupby('player').tail(1).reset_index(drop=True)
-    joined_df = pd.merge(latest, ranks_df, how='left',
-                         left_on='player', right_on='player_name')
+    latest['_match_name'] = normalize_player_name(latest['player'])
+
+    # Match on the folded name rather than the raw string. Duplicates are dropped
+    # so a repeated DataGolf entry can't fan a player out into several rows.
+    ranks = ranks_df.copy()
+    ranks['_match_name'] = normalize_player_name(ranks['player_name'])
+    ranks = ranks[ranks['_match_name'] != ''].drop_duplicates(
+        subset='_match_name', keep='first')
+
+    joined_df = pd.merge(latest, ranks, how='left', on='_match_name')
+    joined_df = joined_df.drop(columns='_match_name')
 
     # Percentile Ranks
     sg_cols = [f'SG_last_{w}' for w in SG_WINDOWS] + ['dg_index']
