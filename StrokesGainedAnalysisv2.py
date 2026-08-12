@@ -709,6 +709,20 @@ def golfer_profile(
             filled = int(round(pct * width))
             return '[' + '█' * filled + '░' * (width - filled) + f']  {pct*100:.1f}th'
 
+        def _raw(pct_col):
+            """The underlying value behind a percentile column.
+
+            Every percentile in the scored dataset is named <metric>_percentile,
+            so the raw column is the name with that suffix removed.
+            """
+            val = row.get(pct_col.removesuffix('_percentile'), np.nan)
+            if pd.isna(val):
+                return '   —  '
+            return f'{float(val):>6.2f}'
+
+        def _line(label, col):
+            print(f"  {label:<28} {_raw(col)}  {_bar(row.get(col, np.nan))}")
+
         sg_cols = {
             'SG Last 1 Event'   : 'SG_last_1_percentile',
             'SG Last 3 Events'  : 'SG_last_3_percentile',
@@ -719,10 +733,13 @@ def golfer_profile(
             'DG Index'          : 'dg_index_percentile',
             'OWGR Rank'         : 'owgr_rank_percentile',
         }
+        # The avg-finish values here are event-weighted (majors and signature
+        # events count for more), so they differ from the plain averages in the
+        # section above. Labelled to keep the two from looking contradictory.
         finish_cols = {
-            'Avg Finish Last 3'       : 'last_3_avg_position_percentile',
-            'Avg Finish Last 5'       : 'last_5_avg_position_percentile',
-            'Avg Finish Last 10'      : 'last_10_avg_position_percentile',
+            'Avg Finish Last 3  (wtd)': 'last_3_avg_position_percentile',
+            'Avg Finish Last 5  (wtd)': 'last_5_avg_position_percentile',
+            'Avg Finish Last 10 (wtd)': 'last_10_avg_position_percentile',
             'Cut % Last Year'         : 'cut_percentage_last_year_percentile',
             'Top 5% Last Year'        : 'top_5_percentage_last_year_percentile',
             'Top 10% Last Year'       : 'top_10_percentage_last_year_percentile',
@@ -735,14 +752,16 @@ def golfer_profile(
             'Top 20 Finishes(Last 10)': 'top_20_last_10_percentile',
         }
 
-        print(f"\n  {'Metric':<28} Percentile Bar")
-        print('  ' + '-' * 55)
+        print(f"\n  {'Metric':<28} {'Value':>6}  Percentile Bar")
+        print('  ' + '-' * 63)
+        print('  (wtd) = weighted by event importance, so it will not match the')
+        print('  plain average above. Percentiles are vs. the scored field.')
         print('  — Strokes Gained —')
         for label, col in sg_cols.items():
-            print(f"  {label:<28} {_bar(row.get(col, np.nan))}")
+            _line(label, col)
         print('\n  — Finish Position —')
         for label, col in finish_cols.items():
-            print(f"  {label:<28} {_bar(row.get(col, np.nan))}")
+            _line(label, col)
 
         # ── Section 5: Composite Summary ──────────────────────────────────
         print('\n🎯  COMPOSITE SCORE SUMMARY')
