@@ -91,6 +91,20 @@ WEIGHTS = {
     'top_20_last_10_percentile'              : 0.5,
 }
 
+# Event importance weights. Bigger events count for more when averaging across
+# starts, so a good week in a weak field can't outrank a good week at a major.
+EVENT_WEIGHTS = {
+    'major'     : 2.0,
+    'signature' : 1.5,
+    'regular'   : 1.0,
+}
+
+# Events whose source flags say 'N' but that deserve signature-level weight.
+# Matched case-insensitively on tournament name.
+ELEVATED_TO_SIGNATURE = {
+    'THE PLAYERS CHAMPIONSHIP',
+}
+
 # Destination table for the scored dataset.
 TABLE_NAME = 'combined_data'
 IF_EXISTS = 'replace'  # 'replace' drops & recreates | 'append' adds rows
@@ -128,6 +142,7 @@ def fetch_sg_data(conn):
     """Leaderboard rows joined to SG data, one row per player/event."""
     query = ''' select a.player , a.pos , a.to_par
     , a.year , a.week_of_season , a.tournament , a.course
+    , a.signature_event , a.major_event
     , b.avg , case when b.avg is null then -2 else b.avg end Updated_Avg
     , b.total_sg_t , b.total_sg_t2g , b.total_sg_p , measured_rounds
     from pga_stats.Leaderboard_data a
@@ -146,17 +161,52 @@ def fetch_sg_data(conn):
     return pd.DataFrame(rows, columns=colnames)
 
 
+def add_event_weights(df):
+    """Attach a per-event importance weight from the major/signature flags."""
+    def _is_y(col):
+        return df[col].fillna('N').astype(str).str.strip().str.upper().eq('Y')
+
+    major = _is_y('major_event')
+    signature = _is_y('signature_event')
+    elevated = (df['tournament'].fillna('').astype(str)
+                  .str.strip().str.upper().isin(ELEVATED_TO_SIGNATURE))
+
+    weights = pd.Series(EVENT_WEIGHTS['regular'], index=df.index, dtype=float)
+    weights[signature | elevated] = EVENT_WEIGHTS['signature']
+    weights[major] = EVENT_WEIGHTS['major']  # major wins if both flags are set
+
+    df['event_weight'] = weights
+    return df
+
+
 def add_rolling_sg(df):
-    """Add SG_last_N rolling averages per player, chronologically."""
+    """Add SG_last_N rolling averages per player, chronologically.
+
+    Averages are weighted by event importance, so majors and signature events
+    pull the average harder than a regular tour stop does.
+    """
+    df = add_event_weights(df)
     df = df.sort_values(by=['player', 'year', 'week_of_season'])
 
-    for window in SG_WINDOWS:
-        df[f'SG_last_{window}'] = (
-            df.groupby('player')['updated_avg']
-              .transform(lambda x, w=window: x.rolling(w, min_periods=1).mean())
-        )
+    # psycopg2 hands back numeric columns as decimal.Decimal, which won't
+    # multiply against a float weight. The old plain .rolling().mean() coerced
+    # these for us; now we have to do it ourselves.
+    df['updated_avg'] = pd.to_numeric(df['updated_avg'], errors='coerce')
 
-    return df.round(3)
+    df['_weighted_sg'] = df['updated_avg'] * df['event_weight']
+
+    for window in SG_WINDOWS:
+        weighted_sum = (
+            df.groupby('player')['_weighted_sg']
+              .transform(lambda x, w=window: x.rolling(w, min_periods=1).sum())
+        )
+        weight_sum = (
+            df.groupby('player')['event_weight']
+              .transform(lambda x, w=window: x.rolling(w, min_periods=1).sum())
+        )
+        df[f'SG_last_{window}'] = weighted_sum / weight_sum
+
+    return df.drop(columns=['_weighted_sg']).round(3)
 
 
 def fetch_datagolf_ranks(conn):
@@ -187,6 +237,7 @@ def fetch_leaderboard(conn):
     """Raw leaderboard results, sorted chronologically per player."""
     query = '''select player , pos , to_par , official_money
     , year , tournament , week_of_season , course
+    , signature_event , major_event
     from pga_stats.leaderboard_data ;'''
 
     df = pd.read_sql_query(query, conn)
@@ -219,8 +270,13 @@ def clean_position(pos):
 
 
 def build_position_metrics(lb_df):
-    """Per-player finish metrics: avg finish, cut %, and top-N counts."""
+    """Per-player finish metrics: avg finish, cut %, and top-N counts.
+
+    Average finish is weighted by event importance; the cut/top-N rates and
+    counts stay unweighted.
+    """
     lb_df['position_numeric'] = lb_df['pos'].apply(clean_position)
+    lb_df = add_event_weights(lb_df)
 
     # Sort by player and then by week/year to get chronological order
     df_sorted = lb_df.sort_values(['player', 'year', 'week_of_season'],
@@ -248,8 +304,11 @@ def build_position_metrics(lb_df):
             cut_percentage = np.nan
             total_tournaments = 0
 
-        # Numeric positions for averaging (excludes NaN from cuts under "skip")
-        positions = group['position_numeric'].dropna().tolist()
+        # Numeric positions for averaging (excludes NaN from cuts under "skip").
+        # Kept as a filtered frame so the event weights stay row-aligned.
+        pos_rows = group[group['position_numeric'].notna()]
+        positions = pos_rows['position_numeric'].tolist()
+        pos_weights = pos_rows['event_weight'].tolist()
 
         if len(positions) == 0:
             continue
@@ -271,10 +330,14 @@ def build_position_metrics(lb_df):
             top_10_percentage = 0.0
             top_20_percentage = 0.0
 
-        last_3_avg = np.mean(positions[-3:]) if len(positions) >= 1 else np.nan
-        last_5_avg = np.mean(positions[-5:]) if len(positions) >= 1 else np.nan
-        last_10_avg = np.mean(positions[-10:]) if len(positions) >= 1 else np.nan
+        def weighted_avg_position(n):
+            return np.average(positions[-n:], weights=pos_weights[-n:])
 
+        last_3_avg = weighted_avg_position(3)
+        last_5_avg = weighted_avg_position(5)
+        last_10_avg = weighted_avg_position(10)
+
+        # Top-N counts stay unweighted — they're counts, not averages.
         last_5_pos = positions[-5:]
         last_10_pos = positions[-10:]
 
@@ -348,6 +411,13 @@ def print_normalized_weights(norm_weights):
     for col, weight in norm_weights.items():
         print(f"{col}: {weight:.3f}")
     print(f"Total: {sum(norm_weights.values()):.3f}")
+    print()
+
+    print("Event importance weights (applied when averaging across starts):")
+    for event_type, weight in EVENT_WEIGHTS.items():
+        print(f"{event_type}: {weight}")
+    for tournament in sorted(ELEVATED_TO_SIGNATURE):
+        print(f"{tournament} (override): {EVENT_WEIGHTS['signature']}")
     print()
 
 
