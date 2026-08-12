@@ -47,7 +47,7 @@ import psycopg2
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 
-from player_names import normalize_player_name
+from player_names import canonical_display_name, normalize_player_name
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
@@ -58,7 +58,14 @@ CUT_PENALTY_POSITION = 80  # Position assigned to cuts when using "penalty" meth
 # Rolling SG windows (fibonacci-ish) built per player.
 SG_WINDOWS = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
 
-# Minimum events played last year to be included.
+# How many seasons count as "recent" for the form metrics and the event minimum.
+# This used to be the previous calendar year alone, which made the current
+# season invisible: a player who had just turned pro was judged on a handful of
+# starts from last year and dropped from the scored dataset entirely, however
+# much he had played this year.
+RECENT_SEASONS = 2
+
+# Minimum events played in the recent seasons to be included.
 MIN_EVENTS_TIER_ANALYSIS = 4  # tier analysis / optimal picks use > 4
 MIN_EVENTS_PROFILE = 3        # golfer profiles / db write use > 3
 
@@ -140,20 +147,12 @@ def connect(db_config):
 
 # ── Strokes Gained ─────────────────────────────────────────────────────────
 
-def fetch_sg_data(conn):
-    """Leaderboard rows joined to SG data, one row per player/event."""
-    query = ''' select a.player , a.pos , a.to_par
-    , a.year , a.week_of_season , a.tournament , a.course
-    , a.signature_event , a.major_event
-    , b.avg , case when b.avg is null then -2 else b.avg end Updated_Avg
-    , b.total_sg_t , b.total_sg_t2g , b.total_sg_p , measured_rounds
-    from pga_stats.Leaderboard_data a
-    left join pga_stats.sg_data b
-    on a.player = b.player
-    and a.year = b.year
-    and a.week_of_season = b.week_of_season
-    '''
+# Strokes gained assumed for a leaderboard row with no matching sg_data row.
+MISSING_SG_FALLBACK = -2
 
+
+def _read_query(conn, query):
+    """Run a SELECT and return the result as a DataFrame."""
     cur = conn.cursor()
     cur.execute(query)
     rows = cur.fetchall()
@@ -161,6 +160,48 @@ def fetch_sg_data(conn):
     cur.close()
 
     return pd.DataFrame(rows, columns=colnames)
+
+
+def fetch_sg_data(conn):
+    """Leaderboard rows joined to SG data, one row per player/event.
+
+    The join is done here rather than in SQL because the two tables spell
+    amateurs differently: the leaderboard tags them "(a)" and sg_data never
+    does. Matching on the raw name left every one of those rows without a
+    strokes-gained match, which the old SQL then filled in with
+    MISSING_SG_FALLBACK — so the marker did not merely lose data, it invented
+    a bad result and fed it into every rolling average. Folding both sides
+    through normalize_player_name() first is the same approach
+    build_sg_percentiles() already uses for the DataGolf join.
+    """
+    lb = _read_query(conn, ''' select player , pos , to_par
+    , year , week_of_season , tournament , course
+    , signature_event , major_event
+    from pga_stats.leaderboard_data
+    ''')
+
+    sg = _read_query(conn, ''' select player , year , week_of_season
+    , avg , total_sg_t , total_sg_t2g , total_sg_p , measured_rounds
+    from pga_stats.sg_data
+    ''')
+
+    lb['player'] = canonical_display_name(lb['player'])
+    lb['_match_name'] = normalize_player_name(lb['player'])
+
+    # One SG row per player/event. Duplicates would fan a leaderboard row out
+    # into several rows and silently double-count the player.
+    sg['_match_name'] = normalize_player_name(sg['player'])
+    sg = sg.drop(columns='player').drop_duplicates(
+        subset=['_match_name', 'year', 'week_of_season'], keep='first')
+
+    df = pd.merge(lb, sg, how='left', on=['_match_name', 'year', 'week_of_season'])
+    df = df.drop(columns='_match_name')
+
+    # Replaces the old SQL `case when b.avg is null then -2 else b.avg end`.
+    df['updated_avg'] = pd.to_numeric(df['avg'], errors='coerce').fillna(
+        MISSING_SG_FALLBACK)
+
+    return df
 
 
 def add_event_weights(df):
@@ -252,6 +293,12 @@ def fetch_leaderboard(conn):
     from pga_stats.leaderboard_data ;'''
 
     df = pd.read_sql_query(query, conn)
+
+    # Same fold as fetch_sg_data, so groupby('player'), the tier-list merge and
+    # the golfer_profile lookup all see one identity per player rather than
+    # separate careers for the amateur and professional spellings.
+    df['player'] = canonical_display_name(df['player'])
+
     return df.sort_values(by=['player', 'year', 'week_of_season'])
 
 
@@ -285,6 +332,11 @@ def build_position_metrics(lb_df):
 
     Average finish is weighted by event importance; the cut/top-N rates and
     counts stay unweighted.
+
+    The cut/top-N metrics and the tournaments_last_year count cover the last
+    RECENT_SEASONS seasons. Those column names say "last_year" for backwards
+    compatibility with the combined_data table — the window is wider than the
+    names suggest.
     """
     lb_df['position_numeric'] = lb_df['pos'].apply(clean_position)
     lb_df = add_event_weights(lb_df)
@@ -295,18 +347,19 @@ def build_position_metrics(lb_df):
 
     results = []
 
-    # Get current date info for filtering last year's data
+    # The recent window spans the current season and the ones before it, so a
+    # player's results this year count toward his form and his event minimum.
     current_year = lb_df['year'].max()  # Use the most recent year in the data
-    last_year_cutoff = current_year - 1  # Look at roughly last year of data
+    recent_years = range(current_year - RECENT_SEASONS + 1, current_year + 1)
 
     for player, group in df_sorted.groupby('player'):
         # Get all tournament entries (including cuts) in chronological order
         all_entries = group.dropna(subset=['pos']).copy()
 
-        # Filter for last year's data for cut percentage calculation
-        recent_entries = all_entries[all_entries['year'] == last_year_cutoff]
+        # Filter to the recent seasons for the cut/top-N calculations
+        recent_entries = all_entries[all_entries['year'].isin(recent_years)]
 
-        # Calculate cut percentage over the last year
+        # Calculate cut percentage over the recent seasons
         if len(recent_entries) > 0:
             cuts_made = len(recent_entries[~recent_entries['pos'].str.upper().isin(['CUT', 'MC'])])
             total_tournaments = len(recent_entries)

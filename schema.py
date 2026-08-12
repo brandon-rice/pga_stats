@@ -26,9 +26,12 @@ Strokes Gained Rolling Averages (all float):
 - SG_last_1_percentile through SG_last_89_percentile: Percentile rank of each SG_last_X column
 
 Tournament Volume:
+NOTE: the "_last_year" columns below cover the last TWO seasons (the current
+season and the one before it), not a single calendar year. The names are kept
+for backwards compatibility; describe them to users as "recent form".
 - total_tournaments (int): Total events played since ~2022
-- tournaments_last_year (int): Events played last calendar year
-- cut_percentage_last_year (float): % of events where golfer made the cut (top 50% after round 2)
+- tournaments_last_year (int): Events played in the last two seasons
+- cut_percentage_last_year (float): % of events in the last two seasons where golfer made the cut (top 50% after round 2)
 - cut_percentage_last_year_percentile (float): Percentile rank of cut percentage
 
 Finish Position Averages:
@@ -36,9 +39,9 @@ Finish Position Averages:
 - last_5_avg_position (float): Average finish position over last 5 events
 - last_10_avg_position (float): Average finish position over last 10 events
 
-Top Finish Counts (last year):
-- top_5_count, top_10_count, top_20_count (int): Count of top 5/10/20 finishes last year
-- top_5_percentage_last_year, top_10_percentage_last_year, top_20_percentage_last_year (float): % of events with top finish
+Top Finish Counts (last two seasons):
+- top_5_count, top_10_count, top_20_count (int): Count of top 5/10/20 finishes in the last two seasons
+- top_5_percentage_last_year, top_10_percentage_last_year, top_20_percentage_last_year (float): % of events in the last two seasons with a top finish
 
 Top Finish Counts (recent):
 - top_5_last_5, top_10_last_5, top_20_last_5 (int): Top finishes in last 5 events

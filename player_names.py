@@ -23,6 +23,8 @@ Usage:
 
   df['player_key'] = normalize_player_name(df['player'])
   key = normalize_one('Ludvig Åberg (a)')   # -> 'ludvigaberg'
+
+  df['player'] = canonical_display_name(df['player'])   # -> 'Ludvig Åberg'
 """
 
 import re
@@ -45,17 +47,40 @@ NAME_CHAR_MAP = {
 }
 
 
+def _strip_amateur_marker(names):
+    """Collapse whitespace runs and drop a trailing "(a)" amateur marker.
+
+    Shared by normalize_player_name() and canonical_display_name() so the two
+    cannot disagree about which names are the same player.
+    """
+    cleaned = names.fillna('').astype(str)
+    cleaned = cleaned.str.replace(r'\s+', ' ', regex=True).str.strip()
+    return cleaned.str.replace(r'\s*\(a\)$', '', regex=True, flags=re.IGNORECASE)
+
+
+def canonical_display_name(names):
+    """Fold a Series of names to one printable spelling per player.
+
+    Same identity rule as normalize_player_name(), but the result stays
+    human-readable: accents and capitalization survive, only the whitespace
+    noise and the amateur marker are removed.
+
+    The leaderboard files amateurs as "Luke Clanton (a)", and sometimes with an
+    embedded newline as "Luke Clanton\\n(a)", so one player can occupy three
+    identities. sg_data carries no "(a)" rows at all, so those leaderboard rows
+    find no strokes-gained match and get scored with a fabricated fallback.
+    Folding the marker off before any join or groupby merges the split career.
+    """
+    return _strip_amateur_marker(names)
+
+
 def normalize_player_name(names):
     """Fold a Series of player names to a common matching key.
 
     Returns a Series of lowercase, letters-only keys. Missing or empty names
     fold to '', which matches nothing.
     """
-    cleaned = names.fillna('').astype(str)
-
-    # Collapse embedded newlines/runs of whitespace, then drop the "(a)" marker.
-    cleaned = cleaned.str.replace(r'\s+', ' ', regex=True).str.strip()
-    cleaned = cleaned.str.replace(r'\s*\(a\)$', '', regex=True, flags=re.IGNORECASE)
+    cleaned = _strip_amateur_marker(names)
 
     for src, dst in NAME_CHAR_MAP.items():
         cleaned = cleaned.str.replace(src, dst, regex=False)
